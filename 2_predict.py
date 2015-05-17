@@ -23,25 +23,34 @@ def is_um(X, clf):
 
 RATE=16000
 RECORD_SECONDS = 15
-CHUNKSIZE = RATE
+CHUNKSIZE = 500
 
 with open('model.p', 'rb') as f:
     clf = pickle.load(f)
 
+window = deque()
+
 # initialize portaudio
 p = pyaudio.PyAudio()
 stream = p.open(format=pyaudio.paInt16, channels=1, rate=RATE, input=True, frames_per_buffer=CHUNKSIZE)
-frames = [] # A python-list of chunks(np.ndarray)
-i = 0
-for _ in range(0, int(RATE / CHUNKSIZE * RECORD_SECONDS)):
-    data = stream.read(CHUNKSIZE)
-    np_data = np.fromstring(data, dtype=np.int16)
-    fft_data = map(np.abs, scipy.fft(np_data))[:len(np_data)/2]
-    adjusted_units = adjust_units(RATE, fft_data)
 
+i = 0
+data = stream.read(RATE)
+np_data = np.fromstring(data, dtype=np.int16)
+window.extend(map(np.abs, np_data))
+
+print len(window)
+for _ in range(0, RATE * RECORD_SECONDS / CHUNKSIZE):
+    d = stream.read(CHUNKSIZE)
+    window.extend(map(np.abs, np.fromstring(d, dtype=np.int16)))
+    for _ in range(CHUNKSIZE):
+        window.popleft()
+
+    fft_data = scipy.fft(list(window))[:len(window)/2]
     prediction = is_um(fft_data, clf)
-    print i, prediction
+
+    if prediction[0][1] > 0.1:
+        print "Um...", prediction
 
     i += 1
-
 
